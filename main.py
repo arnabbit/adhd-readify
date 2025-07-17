@@ -1,7 +1,10 @@
 from fastapi import FastAPI, UploadFile
 from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 import tempfile
 import fitz  # PyMuPDF
+
+
 
 def adhd_bold_clean_pdf(input_path, output_path):
     src_doc = fitz.open(input_path)
@@ -54,6 +57,14 @@ def adhd_bold_clean_pdf(input_path, output_path):
 
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # or specify your frontend URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.post("/adhd-clean")
 async def adhd_clean_endpoint(file: UploadFile):
