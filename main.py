@@ -4,50 +4,65 @@ from fastapi.middleware.cors import CORSMiddleware
 import tempfile
 import fitz  # PyMuPDF
 
+app = FastAPI()
 
+# ✅ Enable CORS for frontend access
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # you can restrict to your frontend URL later
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
+# ✅ Core processing: create new PDF with bigger first letters
 def adhd_bold_clean_pdf(input_path, output_path):
     src_doc = fitz.open(input_path)
-    new_doc = fitz.open()  # brand new blank PDF
+    new_doc = fitz.open()
+
+    NORMAL_SIZE = 10        # Base font size
+    SCALE_FACTOR = 1.15      # First letters 30% bigger
 
     for src_page in src_doc:
         rect = src_page.rect
 
-        # ✅ Create a completely blank page
+        # create blank page with same size
         new_page = new_doc.new_page(width=rect.width, height=rect.height)
 
-        # ✅ Extract text words
-        words = src_page.get_text("words")  # [(x0, y0, x1, y1, "word", block, line, word_no)]
+        # extract words with coordinates
+        words = src_page.get_text("words")
 
         for w in words:
             x0, y0, x1, y1, word, *_ = w
             if not word.strip():
                 continue
 
-            # how many letters to bold
+            # decide how many letters to enlarge
             n = 1 if len(word) <= 3 else 2 if len(word) <= 5 else 3
-            bold_part = word[:n]
+            big_part = word[:n]
             rest_part = word[n:]
 
-            # ✅ draw bold part in blue
+            big_size = NORMAL_SIZE * SCALE_FACTOR
+
+            # Draw first few letters larger + blue
             new_page.insert_text(
                 (x0, y1),
-                bold_part,
-                fontname="helv",   # built-in Helvetica
-                fontsize=10,
-                color=(0, 0, 1)
+                big_part,
+                fontname="helv",
+                fontsize=big_size,
+                color=(0, 0, 1)  # blue
             )
 
-            # ✅ measure width of bold part
-            width = fitz.get_text_length(bold_part, fontname="helv", fontsize=10)
+            # Measure width of enlarged letters
+            width_big = fitz.get_text_length(big_part, fontname="helv", fontsize=big_size)
 
-            # ✅ draw remaining letters in black right after bold
+            # Draw the rest of the word in normal black
             new_page.insert_text(
-                (x0 + width, y1),
+                (x0 + width_big, y1),
                 rest_part,
                 fontname="helv",
-                fontsize=10,
-                color=(0, 0, 0)
+                fontsize=NORMAL_SIZE,
+                color=(0, 0, 0)  # black
             )
 
     new_doc.save(output_path)
@@ -56,16 +71,6 @@ def adhd_bold_clean_pdf(input_path, output_path):
     print(f"✅ Clean ADHD-friendly PDF created: {output_path}")
 
 
-app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # or specify your frontend URL
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 @app.post("/adhd-clean")
 async def adhd_clean_endpoint(file: UploadFile):
     # Save uploaded file temporarily
@@ -73,9 +78,16 @@ async def adhd_clean_endpoint(file: UploadFile):
         tmp_in.write(await file.read())
         input_path = tmp_in.name
 
+    # Create output temp file
     output_path = input_path.replace(".pdf", "-adhd.pdf")
 
-    # Run the ADHD text-only conversion
+    # Process the PDF
     adhd_bold_clean_pdf(input_path, output_path)
 
+    # Return the processed file
     return FileResponse(output_path, filename="adhd-friendly.pdf")
+
+
+@app.get("/")
+def root():
+    return {"message": "✅ ADHD-friendly PDF API is running!"}
